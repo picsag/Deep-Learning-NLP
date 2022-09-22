@@ -1,3 +1,6 @@
 tensorflow
 pandas
 gensim
+tensorflow-hub
+tensorflow-text
+scikit-learn
