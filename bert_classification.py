@@ -1,7 +1,12 @@
+import tensorflow as tf
 import tensorflow_hub as hub
 import tensorflow_text as text
+from tensorflow.keras.layers import Input, Dense, Flatten, Dropout
+from tensorflow.keras.models import Model
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, classification_report
 import time
 
 # create a variable for downloading the BERT model
@@ -55,7 +60,7 @@ df = pd.read_csv('./Datasets/spam.csv', encoding='latin-1')
 print(df.groupby('v1').describe())
 
 df_spam = df[df['v1'] == 'spam']
-df_spam = df[df['v1'] == 'ham']
+df_ham = df[df['v1'] == 'ham']
 
 df_ham = df_ham.sample(df_spam.shape[0])
 
@@ -66,4 +71,70 @@ print(df_balanced['v1'].value_counts())
 df_balanced['spam'] = df_balanced['v1'].apply(lambda x: 1 if x == 'spam' else 0)
 
 X_train, X_test, y_train, y_test = train_test_split(df_balanced['v2'], df_balanced['spam'], stratify=df_balanced['spam'])
+
+print(X_train.head())
+
+
+def get_sentence_embedding(sentences):
+    preprocessed = bert_preprocess_model(sentences)
+    return bert_model(preprocessed)['pooled_output']
+
+
+def build_model():
+    # Define the BERT layers
+    input = Input(shape=(), dtype=tf.string, name="text")
+    preprocessed_text = bert_preprocess_model(input)
+    embeddings = bert_model(preprocessed_text)
+
+    # Neural Network layers:
+    drop = Dropout(0.1, name='dropout')(embeddings['pooled_output'])
+    output = Dense(1, activation='sigmoid', name='output')(drop)
+
+    # Construct the final model:
+    model = Model(inputs=[input], outputs=[output])
+
+    metrics = [
+        tf.keras.metrics.BinaryAccuracy(name='accuracy'),
+        tf.keras.metrics.Precision(name='precision'),
+        tf.keras.metrics.Recall(name='recall')
+    ]
+
+    model.compile(optimizer='adam',
+                  loss='binary_crossentropy',
+                  metrics=metrics)
+
+    return model
+
+
+model = build_model()
+
+t = time.process_time()
+
+model.fit(X_train, y_train, epochs=10)
+
+elapsed_time = time.process_time() - t
+print(f"Time to train the Keras model: {elapsed_time}")
+
+model.save("./models/1/")
+model.save("./models/2/")
+model.save("./models/3/")
+
+model.evaluate(X_test, y_test)
+
+y_pred = model.predict(X_test)
+y_pred = y_pred.flatten()
+
+y_pred = np.where(y_pred > 0.5, 1, 0)
+
+cm = confusion_matrix(y_test, y_pred)
+
+print(cm)
+
+print(classification_report(y_test, y_pred))
+
+# instructions for Docker and TF Serving:
+# docker pull tensorflow/serving
+# docker run -it -v C:\WORK\Projects\Deep-Learning-NLP\models: /tf_serving - p 8605: 8605 --entrypoint /bin/bash tensorflow/serving
+# tensorflow_model_server --rest_api_port=8605 --model_name=email_model --model_base_path=/tf_serving/
+
 
